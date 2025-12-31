@@ -1,11 +1,11 @@
-import sys
-
-from dependency_injector.wiring import Provide, inject
-from espn_api.football import League, Team
+import heapq
 from typing import List, Tuple
 
-from league_configuration_data import LeagueConfigurationData
+from espn_api.football import Team
+from data_classes.league_configuration_data import LeagueConfigurationData
+from data_classes.team_score_weekly import TeamScoreWeekly
 from league_fetcher import LeagueFetcher
+from team_name_converter import get_team_owner
 
 
 class BorrachosLeagueDetails:
@@ -28,13 +28,8 @@ class BorrachosLeagueDetails:
         self.season = league_data.season_year
         self.league_id = league_data.league_id
         self.team_buyin = league_data.team_buy_in
-        self.espn_endpoint = (
-            "https://fantasy.espn.com/apis/v3/games/FFL/seasons/"
-            + str(self.season)
-            + "/segments/0/leagues/"
-            + str(self.league_id)
-        )
         self.league_details = league_fetcher.fetch_league()
+        self.robot_team_ids = league_data.robot_team_ids
 
     def get_top_scorer(self) -> Team:
         """
@@ -56,30 +51,78 @@ class BorrachosLeagueDetails:
                 top_teams[team.team_id] = self.position_winnings[team.final_standing]
         return top_teams
 
-    def get_weekly_scorers(self) -> List[Tuple]:
+    def get_weekly_scorers(self) -> List[TeamScoreWeekly]:
         highest_weekly_scorers = list()
-        for week_number in range(1, 14):
+        for week_number in range(1, 15):
             weekly_scoreboard = self.league_details.scoreboard(week_number)
-            highest_team = (
+            highest_team = TeamScoreWeekly(
                 0,
-                weekly_scoreboard[0].home_team.team_id,
-                weekly_scoreboard[0].home_score,
+                0,
+                0,
             )
             for matchup in weekly_scoreboard:
-                home_details = (
-                    week_number,
-                    matchup.home_team.team_id,
-                    matchup.home_score,
+                home_details = TeamScoreWeekly(
+                    matchup.home_team.team_id, week_number, matchup.home_score
                 )
-                away_details = (
-                    week_number,
-                    matchup.away_team.team_id,
-                    matchup.away_score,
+
+                if home_details.team_id in self.robot_team_ids:
+                    home_details = TeamScoreWeekly(
+                        team_id=matchup.home_team.team_id,
+                        week_number=week_number,
+                        weekly_team_score=0,
+                    )
+
+                away_details = TeamScoreWeekly(
+                    matchup.away_team.team_id, week_number, matchup.away_score
                 )
-                matchup_leader = max(home_details, away_details, key=lambda t: t[2])
-                highest_team = max(matchup_leader, highest_team, key=lambda t: t[2])
+
+                if away_details.team_id in self.robot_team_ids:
+                    away_details = TeamScoreWeekly(
+                        team_id=matchup.away_team.team_id,
+                        week_number=week_number,
+                        weekly_team_score=0,
+                    )
+
+                matchup_leader = max(
+                    home_details, away_details, key=lambda t: t.weekly_team_score
+                )
+                highest_team = max(
+                    matchup_leader, highest_team, key=lambda t: t.weekly_team_score
+                )
             highest_weekly_scorers.append(highest_team)
         return highest_weekly_scorers
+
+    def get_weekly_highest_scorers(self):
+        pass
+
+    def get_weekly_team_scores_inorder(self, week_number: int) -> List[Tuple]:
+        """
+        Get the weekly teams scores in order for a given week
+
+        Heap values are negative to create a maxheap
+
+        :param week_number:
+        :return:
+        """
+        sorted_team_scores = []
+        weekly_scoreboard = self.league_details.scoreboard(week_number)
+
+        for matchup in weekly_scoreboard:
+            sorted_team_scores.append(
+                (
+                    matchup.home_team.team_id,
+                    matchup.home_score * -1,
+                )
+            )
+            sorted_team_scores.append(
+                (
+                    matchup.away_team.team_id,
+                    matchup.away_score * -1,
+                )
+            )
+
+            heapq.heapify(sorted_team_scores)
+            return sorted_team_scores
 
     def get_teams(self) -> List[Team]:
         return self.league_details.teams
@@ -89,7 +132,11 @@ class BorrachosLeagueDetails:
         Initialize team by team ID
         :return:
         """
-        teams_payment = {team.team_id: -self.team_buyin for team in self.get_teams()}
+        teams_payment = {
+            team.team_id: -self.team_buyin
+            for team in self.get_teams()
+            if team.team_id not in self.robot_team_ids
+        }
         return teams_payment
 
     def get_teams_winnings_amount(self) -> dict:
@@ -118,31 +165,38 @@ class BorrachosLeagueDetails:
 
         print("Top placing teams")
         print(f"Top teams: {top_teams.items()}")
-        for place, (team, winnings) in enumerate(top_teams.items(), start=1):
-            print("{} place team {} wins ${}".format(place, team, winnings))
-            print(f"all_teams: {all_teams.items()}")
-            all_teams[team] += top_teams[team]
-
-        print("Weekly winners - each team wins ${}".format(self.weekly_winnings))
-        for week_number, team_id, team_score in weekly_winners:
+        for place, (team_id, winnings) in enumerate(top_teams.items(), start=1):
             print(
-                "Week {} winner: {} with {} points".format(
-                    week_number, team_id, team_score
+                "{} place team {} wins ${}".format(
+                    place, get_team_owner(team_id), winnings
                 )
             )
-            all_teams[team_id] += self.weekly_winnings
+            all_teams[team_id] += top_teams[team_id]
+
+        print("Weekly winners - each team wins ${}".format(self.weekly_winnings))
+        for weekly_team_score in weekly_winners:
+            if weekly_team_score.team_id == 14:
+                print(weekly_team_score)
+            print(
+                "Week {} winner: {} with {} points".format(
+                    weekly_team_score.week_number,
+                    get_team_owner(weekly_team_score.team_id),
+                    weekly_team_score.weekly_team_score,
+                )
+            )
+            all_teams[weekly_team_score.team_id] += self.weekly_winnings
 
         all_teams[best_record_team.team_id] += self.best_record_winnings
         all_teams[most_points_team.team_id] += self.most_points_winnings
 
         print(
             "Best record team wins ${}: {}".format(
-                self.best_record_winnings, best_record_team
+                self.best_record_winnings, get_team_owner(best_record_team.team_id)
             )
         )
         print(
             "Most points team wins ${}: {}".format(
-                self.most_points_winnings, most_points_team
+                self.most_points_winnings, get_team_owner(most_points_team.team_id)
             )
         )
 

@@ -14,3 +14,4 @@ class LeagueConfigurationData:
     most_points_prize: int
     weekly_highest_score_prize: int
     team_buy_in: int
+    robot_team_ids: list[int]
