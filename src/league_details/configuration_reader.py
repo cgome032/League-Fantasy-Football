@@ -5,7 +5,9 @@ from league_details import BorrachosLeagueDetails
 from league_fetcher import ESPNLeagueFetcher
 
 
-def split_list_into_int(robot_string: str):
+def split_list_into_int(robot_string: str) -> list[int]:
+    if not robot_string:
+        return []
     string_list = robot_string.split(",")
     robot_id_list = [int(id) for id in string_list]
     return robot_id_list

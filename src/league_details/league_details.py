@@ -95,7 +95,7 @@ class BorrachosLeagueDetails:
     def get_weekly_highest_scorers(self):
         pass
 
-    def get_weekly_team_scores_inorder(self, week_number: int) -> List[Tuple]:
+    def get_weekly_team_scores_inorder(self, week_number: int) -> list[tuple]:
         """
         Get the weekly teams scores in order for a given week
 
@@ -121,8 +121,8 @@ class BorrachosLeagueDetails:
                 )
             )
 
-            heapq.heapify(sorted_team_scores)
-            return sorted_team_scores
+        heapq.heapify(sorted_team_scores)
+        return sorted_team_scores
 
     def get_teams(self) -> List[Team]:
         return self.league_details.teams
@@ -175,8 +175,6 @@ class BorrachosLeagueDetails:
 
         print("Weekly winners - each team wins ${}".format(self.weekly_winnings))
         for weekly_team_score in weekly_winners:
-            if weekly_team_score.team_id == 14:
-                print(weekly_team_score)
             print(
                 "Week {} winner: {} with {} points".format(
                     weekly_team_score.week_number,

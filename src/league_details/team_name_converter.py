@@ -6,9 +6,9 @@ teams_by_team_id = {
     11: "Lui",
     12: "David",
     13: "Angel",
-    14: "Anthony",
+    14: "Michael",
     16: "Mario",
-    17: "Emy",
+    17: "JuneYah",
     18: "Jesse",
     19: "Julito",
 }
